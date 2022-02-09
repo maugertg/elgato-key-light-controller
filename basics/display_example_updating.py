@@ -1,3 +1,7 @@
+"""
+From: https://learn.adafruit.com/monochrome-oled-breakouts/circuitpython-usage#example-code-3040960-20
+"""
+
 import time
 import board
 import displayio
