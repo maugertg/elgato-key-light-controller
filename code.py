@@ -107,19 +107,15 @@ def use_neopixel(pixel, color):
     pixel.fill(color)
     pixel.show()
 
-def main():
-    # Release displays to avoid soft reset "Too many display busses" error
-    displayio.release_displays()
 
+def initialize_i2c_display():
     # Initialize I2C interface and display driver
     i2c = board.I2C()
     display_bus = displayio.I2CDisplay(i2c, device_address=0x3d)
     display = adafruit_displayio_ssd1306.SSD1306(display_bus, width=128, height=64)
+    return display
 
-    # Create group to display context
-    main_group = displayio.Group()
-    # display.show(main_group)
-
+def create_boarder_display_context():
     # Make the display context for boarder
     splash = displayio.Group()
 
@@ -141,82 +137,103 @@ def main():
     inner_sprite = displayio.TileGrid(inner_bitmap, pixel_shader=inner_palette, x=BORDER, y=BORDER)
     splash.append(inner_sprite)
 
-    main_group.append(splash)
+    return splash
 
-    # Draw value labels
-    text_area_lables = label.Label(
+def create_text_labels(x_pos, y_pos, text=""):
+    return label.Label(
         terminalio.FONT,
-        text="Temp:      Power:",
+        text=text,
         color=0xFFFFFF,
-        x=7,
-        y=14
+        x=x_pos,
+        y=y_pos
     )
 
-    splash.append(text_area_lables)
+def brightness_state_adjusted_more_than_one(scaled_brightness, brightness_state, threshold=0.95):
+    return bool(brightness_state-threshold > scaled_brightness or scaled_brightness > brightness_state+threshold)
 
-    # Draw 2x scaled group for values
-    helvetica = bitmap_font.load_font("fonts/Helvetica-Bold-16.bdf")
+def main():
+    # Release and initialize displays to avoid soft reset "Too many display busses" error
+    displayio.release_displays()
+    display = initialize_i2c_display()
 
+    # Setup the display groups and contexts
+    main_group = displayio.Group()
+
+    # Create primary display group with boarder
+    splash = create_boarder_display_context()
+    main_group.append(splash)
+
+    # Creat labels for pot values 
+    main_group.append(create_text_labels(x_pos=7, y_pos=15, text="Temp:      Power:"))
+
+    # Create group for pot values at 2x scale
     values = displayio.Group(scale=2)
     main_group.append(values)
 
-    text_area_temp_val = label.Label(
-        terminalio.FONT,
-        # helvetica,
-        # text="",
-        color=0xFFFFFF,
-        x=4,
-        y=15
-    )
+    # Create Color Temperature text lable 
+    text_area_temp_val = create_text_labels(x_pos=4, y_pos=15)
     values.append(text_area_temp_val)
 
-    text_area_bright_val = label.Label(
-        terminalio.FONT,
-        # text="",
-        color=0xFFFFFF,
-        x=37,
-        y=15
-    )
+    # Create Brightness text label
+    text_area_bright_val = create_text_labels(x_pos=37, y_pos=15)
     values.append(text_area_bright_val)
 
     # Setup potentiometers
-    pot_temp = AnalogIn(board.A2)  # 536 to 53401
-    pot_brightness = AnalogIn(board.A3)  # 536 to 53401
+    pot_temp = AnalogIn(board.A2)  # outputs values from 536 to 53401
+    pot_brightness = AnalogIn(board.A3)  # outputs values from 536 to 53401
 
+    # Values used to scale pot output
     base = 50
     low_value = 536
     high_value = 53401
+
+    # Chunk pot output into appropriate number of values based on API input
     brightness_scaler = (high_value - low_value) / 100
     temperature_scaler = (high_value - low_value) / 82
 
+    # Setup neopixel and switch input
     pixel = setup_neopixel()
     switch = setup_button()
 
-    pool = socketpool.SocketPool(wifi.radio)
-    session = adafruit_requests.Session(pool, ssl.create_default_context())
-
+    # Connect to WiFi
     use_neopixel(pixel, YELLOW)
     connect_to_wifi(pixel)
 
-
+    # Refresh Display
     display.show(main_group)
 
+    # Setup HTTP session handler
+    pool = socketpool.SocketPool(wifi.radio)
+    session = adafruit_requests.Session(pool, ssl.create_default_context())
+
+    # Query light for current state values:
     starting_light_state = get_light_state(session)
+
+    # Setup initial light state values
     light_state = new_light_state = False
     adjust_brightness = False
     brightness_state = starting_light_state.get("brightness")
+    brightness_changes = 0
+    adjust_temperature = False
+    temperature_state = starting_light_state.get("temperature")
+    temperature_changes = 0
 
+    # Update neopixel to indicate WiFi has connected and the code has entered the primary loop
     use_neopixel(pixel, BLUE)
+    
     while True:
-        # first pass: check real life
+        ### first pass: check real life
         switch.update()
+        
+        # Scale the brightness pot output between 0 and 100
+        scaled_brightness = (pot_brightness.value / brightness_scaler) - 1
 
-        scaled_brightness = int((pot_brightness.value / brightness_scaler) - 1)
+        # Scale the temp pot output between 2900 and 7000
         scaled_temp = 50*(pot_temp.value / temperature_scaler)+2859
+        # Adjust the pot output by steps of 50
         stepped_temp = base * round(scaled_temp/base)
 
-
-        # second pass: assess state
+        ### second pass: assess state
         if switch.rose:
             light_state = bool(get_light_state(session)['on'])
             if light_state:
@@ -224,10 +241,10 @@ def main():
             else:
                 new_light_state = True
 
-        if scaled_brightness != brightness_state:
+        if scaled_brightness != brightness_state and brightness_state_adjusted_more_than_one(scaled_brightness, brightness_state):
             adjust_brightness = True
 
-        # third pass: reconcile state
+        ### third pass: reconcile state
         if light_state != new_light_state:
             if light_state:
                 use_neopixel(pixel, RED)
@@ -240,19 +257,16 @@ def main():
 
         if adjust_brightness:
             change_light_brightness(session, scaled_brightness)
+            brightness_changes += 1
+            print(brightness_changes)
             brightness_state = scaled_brightness
             adjust_brightness = False
-
-
-        text_area_bright_val.text = f"{str(scaled_brightness)}%"
+        
+        text_area_bright_val.text = f"{str(int(scaled_brightness))}%"
         text_area_temp_val.text = f"{str(stepped_temp)}"
 
 
         light_state = new_light_state
-        
-
-        # time.sleep(0.2)
 
 if __name__ == '__main__':
     main()
-
