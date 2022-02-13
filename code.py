@@ -92,6 +92,26 @@ def change_light_brightness(session, brightness):
     print("brightness changed")
     # print(response.json()['lights'][0]['on'])
 
+def change_light_temperature (session, temperature):
+    url = "http://192.168.1.159:9123/elgato/lights"
+
+    payload = json.dumps({
+        "lights": [
+            {
+                "temperature": temperature
+            }
+        ],
+        "numberOfLights": 1
+    })
+    headers = {
+      'Accept': 'application/json',
+      'Content-Type': 'application/json'
+    }
+
+    response = session.put(url, headers=headers, data=payload)
+    print("temperature changed")
+    # print(response.json()['lights'][0]['on'])
+
 def setup_neopixel():
     pixel_pin = board.IO45
     num_pixels = 1
@@ -228,8 +248,15 @@ def main():
         # Scale the brightness pot output between 0 and 100
         scaled_brightness = (pot_brightness.value / brightness_scaler) - 1
 
+        # Pot value used for API interactions
+        scaled_temp_api = (pot_temp.value / brightness_scaler) - 1
+        scaled_temp_api_value = (scaled_temp_api * 2) + 142
+
         # Scale the temp pot output between 2900 and 7000
+        # scaled_temp = 50*(pot_temp.value / temperature_scaler)+2859
+
         scaled_temp = 50*(pot_temp.value / temperature_scaler)+2859
+
         # Adjust the pot output by steps of 50
         stepped_temp = base * round(scaled_temp/base)
 
@@ -243,6 +270,9 @@ def main():
 
         if scaled_brightness != brightness_state and brightness_state_adjusted_more_than_one(scaled_brightness, brightness_state):
             adjust_brightness = True
+
+        if scaled_temp_api_value != temperature_state and brightness_state_adjusted_more_than_one(scaled_temp_api_value, temperature_state):
+            adjust_temperature = True
 
         ### third pass: reconcile state
         if light_state != new_light_state:
@@ -261,6 +291,13 @@ def main():
             print(brightness_changes)
             brightness_state = scaled_brightness
             adjust_brightness = False
+
+        if adjust_temperature:
+            change_light_temperature(session, scaled_temp_api_value)
+            temperature_changes += 1
+            print(temperature_changes)
+            temperature_state = scaled_temp_api_value
+            adjust_temperature = False
         
         text_area_bright_val.text = f"{str(int(scaled_brightness))}%"
         text_area_temp_val.text = f"{str(stepped_temp)}"
