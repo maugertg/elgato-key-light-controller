@@ -7,14 +7,14 @@ import time
 import adafruit_requests
 
 import board
+import neopixel
 import digitalio
 from adafruit_debouncer import Debouncer
-import neopixel
-
 
 import displayio
 import terminalio
 import adafruit_displayio_ssd1306
+from math import log
 from analogio import AnalogIn
 from adafruit_display_text import label
 from adafruit_bitmap_font import bitmap_font
@@ -168,8 +168,8 @@ def create_text_labels(x_pos, y_pos, text=""):
         y=y_pos
     )
 
-def brightness_state_adjusted_more_than_one(scaled_brightness, brightness_state, threshold=0.95):
-    return bool(brightness_state-threshold > scaled_brightness or scaled_brightness > brightness_state+threshold)
+def knob_state_delta_more_than_one(new_state, old_state, threshold=0.95):
+    return bool(old_state-threshold > new_state or new_state > old_state+threshold)
 
 def main():
     # Release and initialize displays to avoid soft reset "Too many display busses" error
@@ -209,7 +209,7 @@ def main():
 
     # Chunk pot output into appropriate number of values based on API input
     brightness_scaler = (high_value - low_value) / 100
-    temperature_scaler = (high_value - low_value) / 82
+    temperature_api_scaler = (high_value - low_value) / 100
 
     # Setup neopixel and switch input
     pixel = setup_neopixel()
@@ -249,16 +249,15 @@ def main():
         scaled_brightness = (pot_brightness.value / brightness_scaler) - 1
 
         # Pot value used for API interactions
-        scaled_temp_api = (pot_temp.value / brightness_scaler) - 1
-        scaled_temp_api_value = (scaled_temp_api * 2) + 142
+        scaled_temp_api = (pot_temp.value / temperature_api_scaler) - 1
+        scaled_temp_api_value = (scaled_temp_api * 2) + 143
 
-        # Scale the temp pot output between 2900 and 7000
-        # scaled_temp = 50*(pot_temp.value / temperature_scaler)+2859
+        # Logarithmically Scale the temp api value between 2900 and 7000
+        # scaled_temp_display = -5000*log(2*(scaled_temp_api_value-107.11591),10)+16280
+        scaled_temp_display = -1667*log(2*(scaled_temp_api_value-99),2)+17770
 
-        scaled_temp = 50*(pot_temp.value / temperature_scaler)+2859
-
-        # Adjust the pot output by steps of 50
-        stepped_temp = base * round(scaled_temp/base)
+        # Adjust the temp display value by steps of 50
+        stepped_temp_display = base * round(scaled_temp_display/base)
 
         ### second pass: assess state
         if switch.rose:
@@ -268,10 +267,10 @@ def main():
             else:
                 new_light_state = True
 
-        if scaled_brightness != brightness_state and brightness_state_adjusted_more_than_one(scaled_brightness, brightness_state):
+        if scaled_brightness != brightness_state and knob_state_delta_more_than_one(scaled_brightness, brightness_state):
             adjust_brightness = True
 
-        if scaled_temp_api_value != temperature_state and brightness_state_adjusted_more_than_one(scaled_temp_api_value, temperature_state):
+        if scaled_temp_api_value != temperature_state and knob_state_delta_more_than_one(scaled_temp_api_value, temperature_state, threshold=1.5):
             adjust_temperature = True
 
         ### third pass: reconcile state
@@ -299,8 +298,8 @@ def main():
             temperature_state = scaled_temp_api_value
             adjust_temperature = False
         
+        text_area_temp_val.text = f"{str(stepped_temp_display)}"
         text_area_bright_val.text = f"{str(int(scaled_brightness))}%"
-        text_area_temp_val.text = f"{str(stepped_temp)}"
 
 
         light_state = new_light_state
