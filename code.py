@@ -18,6 +18,7 @@ from math import log
 from analogio import AnalogIn
 from adafruit_display_text import label
 from adafruit_bitmap_font import bitmap_font
+from adafruit_display_shapes.line import Line
 from adafruit_progressbar.horizontalprogressbar import HorizontalProgressBar
 
 RED = (255, 0, 0)
@@ -193,11 +194,16 @@ def main():
     progress_bar_bright = HorizontalProgressBar((process_bar_x, 55), (progress_bar_width, progress_bar_height), 0, 100, border_thickness=0)
 
     # Append progress_bars to the splash group
-    main_group.append(progress_bar_bright)    
-    main_group.append(progress_bar_temp)    
+    main_group.append(progress_bar_temp)
+    # main_group.append(Line(11, 6, 11, 8, 0xFFFFFF)) # Line at start of progress bar
+    main_group.append(Line(114, 6, 114, 8, 0xFFFFFF))
+    main_group.append(progress_bar_bright)
+    # main_group.append(Line(11, 56, 11, 58, 0xFFFFFF)) # Line at start of progress bar
+    main_group.append(Line(114, 56, 114, 58, 0xFFFFFF))
 
     # Creat labels for pot values 
-    main_group.append(create_text_labels(x_pos=7, y_pos=20, text="Temp:      Power:"))
+    # main_group.append(create_text_labels(x_pos=7, y_pos=20, text="Temp:      Power:"))
+    main_group.append(create_text_labels(x_pos=7, y_pos=20, text="Temp:      Bright:"))
 
     # Create group for pot values at 2x scale
     values = displayio.Group(scale=2)
