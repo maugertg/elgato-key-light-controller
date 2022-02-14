@@ -18,6 +18,7 @@ from math import log
 from analogio import AnalogIn
 from adafruit_display_text import label
 from adafruit_bitmap_font import bitmap_font
+from adafruit_progressbar.horizontalprogressbar import HorizontalProgressBar
 
 RED = (255, 0, 0)
 YELLOW = (255, 150, 0)
@@ -181,21 +182,35 @@ def main():
 
     # Create primary display group with boarder
     splash = create_boarder_display_context()
-    main_group.append(splash)
+    # main_group.append(splash)
+
+    # Create a new progress_bar objects at their x, y locations
+    progress_bar_width = 104
+    progress_bar_height = 5
+    process_bar_x = 12
+
+    progress_bar_temp = HorizontalProgressBar((process_bar_x, 5), (progress_bar_width, progress_bar_height), 0, 100, border_thickness=0)
+    progress_bar_bright = HorizontalProgressBar((process_bar_x, 55), (progress_bar_width, progress_bar_height), 0, 100, border_thickness=0)
+
+    # Append progress_bars to the splash group
+    main_group.append(progress_bar_bright)    
+    main_group.append(progress_bar_temp)    
 
     # Creat labels for pot values 
-    main_group.append(create_text_labels(x_pos=7, y_pos=15, text="Temp:      Power:"))
+    main_group.append(create_text_labels(x_pos=7, y_pos=20, text="Temp:      Power:"))
 
     # Create group for pot values at 2x scale
     values = displayio.Group(scale=2)
     main_group.append(values)
 
-    # Create Color Temperature text lable 
-    text_area_temp_val = create_text_labels(x_pos=4, y_pos=15)
+    # Create Color Temperature text lable
+    value_y_pos = 19
+
+    text_area_temp_val = create_text_labels(x_pos=4, y_pos=value_y_pos)
     values.append(text_area_temp_val)
 
     # Create Brightness text label
-    text_area_bright_val = create_text_labels(x_pos=37, y_pos=15)
+    text_area_bright_val = create_text_labels(x_pos=37, y_pos=value_y_pos)
     values.append(text_area_bright_val)
 
     # Setup potentiometers
@@ -240,7 +255,7 @@ def main():
 
     # Update neopixel to indicate WiFi has connected and the code has entered the primary loop
     use_neopixel(pixel, BLUE)
-    
+
     while True:
         ### first pass: check real life
         switch.update()
@@ -299,7 +314,10 @@ def main():
             adjust_temperature = False
         
         text_area_temp_val.text = f"{str(stepped_temp_display)}"
+        progress_bar_temp.value = int(scaled_temp_api)
+        
         text_area_bright_val.text = f"{str(int(scaled_brightness))}%"
+        progress_bar_bright.value = int(scaled_brightness)
 
 
         light_state = new_light_state
